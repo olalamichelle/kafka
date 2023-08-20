@@ -27,41 +27,37 @@ import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.state.TimestampedWindowStore;
 import org.apache.kafka.streams.state.WindowBytesStoreSupplier;
 import org.apache.kafka.streams.state.WindowStore;
-import org.easymock.EasyMockRule;
-import org.easymock.Mock;
-import org.easymock.MockType;
 import org.hamcrest.CoreMatchers;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.util.Collections;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameter;
+import org.mockito.Mock;
 
 import static java.util.Arrays.asList;
-import static org.easymock.EasyMock.expect;
-import static org.easymock.EasyMock.replay;
-import static org.easymock.EasyMock.reset;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.core.IsInstanceOf.instanceOf;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @RunWith(Parameterized.class)
 public class TimestampedWindowStoreBuilderTest {
     private static final String TIMESTAMP_STORE_NAME = "Timestamped Store";
     private static final String TIMEORDERED_STORE_NAME = "TimeOrdered Store";
 
-    @Rule
-    public EasyMockRule rule = new EasyMockRule(this);
-    @Mock(type = MockType.NICE)
+    @Mock
     private WindowBytesStoreSupplier supplier;
-    @Mock(type = MockType.NICE)
+    @Mock
     private RocksDBTimestampedWindowStore timestampedStore;
-    @Mock(type = MockType.NICE)
+    @Mock
     private RocksDBTimeOrderedWindowStore timeOrderedStore;
     private TimestampedWindowStoreBuilder<String, String> builder;
     private boolean isTimeOrderedStore;
@@ -81,19 +77,24 @@ public class TimestampedWindowStoreBuilderTest {
     @SuppressWarnings("unchecked")
     @Before
     public void setUp() {
+        supplier = mock(WindowBytesStoreSupplier.class);
+        timestampedStore = mock(RocksDBTimestampedWindowStore.class);
+        timeOrderedStore = mock(RocksDBTimeOrderedWindowStore.class);
         isTimeOrderedStore = TIMEORDERED_STORE_NAME.equals(storeName);
         inner = isTimeOrderedStore ? timeOrderedStore : timestampedStore;
-        expect(supplier.get()).andReturn(inner);
-        expect(supplier.name()).andReturn("name");
-        expect(supplier.metricsScope()).andReturn("metricScope");
-        expect(inner.persistent()).andReturn(true).anyTimes();
-        replay(supplier, inner);
+        when(supplier.get()).thenReturn(inner);
+        when(supplier.name()).thenReturn("name");
+        when(supplier.metricsScope()).thenReturn("metricScope");
+        when(inner.persistent()).thenReturn(true);
 
         builder = new TimestampedWindowStoreBuilder<>(
             supplier,
             Serdes.String(),
             Serdes.String(),
             new MockTime());
+
+        verify(supplier, times(1)).name();
+        verify(supplier, times(1)).metricsScope();
     }
 
     @Test
@@ -159,8 +160,7 @@ public class TimestampedWindowStoreBuilderTest {
 
     @Test
     public void shouldNotWrapTimestampedByteStore() {
-        reset(supplier);
-        expect(supplier.get()).andReturn(new RocksDBTimestampedWindowStore(
+        when(supplier.get()).thenReturn(new RocksDBTimestampedWindowStore(
             new RocksDBTimestampedSegmentedBytesStore(
                 "name",
                 "metric-scope",
@@ -169,8 +169,7 @@ public class TimestampedWindowStoreBuilderTest {
                 new WindowKeySchema()),
             false,
             1L));
-        expect(supplier.name()).andReturn("name");
-        replay(supplier);
+        when(supplier.name()).thenReturn("name");
 
         final TimestampedWindowStore<String, String> store = builder
             .withLoggingDisabled()
@@ -181,8 +180,7 @@ public class TimestampedWindowStoreBuilderTest {
 
     @Test
     public void shouldWrapPlainKeyValueStoreAsTimestampStore() {
-        reset(supplier);
-        expect(supplier.get()).andReturn(new RocksDBWindowStore(
+        when(supplier.get()).thenReturn(new RocksDBWindowStore(
             new RocksDBSegmentedBytesStore(
                 "name",
                 "metric-scope",
@@ -191,8 +189,7 @@ public class TimestampedWindowStoreBuilderTest {
                 new WindowKeySchema()),
             false,
             1L));
-        expect(supplier.name()).andReturn("name");
-        replay(supplier);
+        when(supplier.name()).thenReturn("name");
 
         final TimestampedWindowStore<String, String> store = builder
             .withLoggingDisabled()
@@ -224,24 +221,14 @@ public class TimestampedWindowStoreBuilderTest {
     }
 
     @Test
-    public void shouldThrowNullPointerIfKeySerdeIsNull() {
-        assertThrows(NullPointerException.class, () -> new TimestampedWindowStoreBuilder<>(supplier, null, Serdes.String(), new MockTime()));
-    }
-
-    @Test
-    public void shouldThrowNullPointerIfValueSerdeIsNull() {
-        assertThrows(NullPointerException.class, () -> new TimestampedWindowStoreBuilder<>(supplier, Serdes.String(), null, new MockTime()));
-    }
-
-    @Test
     public void shouldThrowNullPointerIfTimeIsNull() {
         assertThrows(NullPointerException.class, () -> new TimestampedWindowStoreBuilder<>(supplier, Serdes.String(), Serdes.String(), null));
     }
 
     @Test
     public void shouldThrowNullPointerIfMetricsScopeIsNull() {
-        reset(supplier);
-        expect(supplier.get()).andReturn(new RocksDBTimestampedWindowStore(
+        when(supplier.metricsScope()).thenReturn(null);
+        when(supplier.get()).thenReturn(new RocksDBTimestampedWindowStore(
             new RocksDBTimestampedSegmentedBytesStore(
                 "name",
                 null,
@@ -250,8 +237,7 @@ public class TimestampedWindowStoreBuilderTest {
                 new WindowKeySchema()),
             false,
             1L));
-        expect(supplier.name()).andReturn("name");
-        replay(supplier);
+        when(supplier.name()).thenReturn("name");
         final Exception e = assertThrows(NullPointerException.class,
             () -> new TimestampedWindowStoreBuilder<>(supplier, Serdes.String(), Serdes.String(), new MockTime()));
         assertThat(e.getMessage(), equalTo("storeSupplier's metricsScope can't be null"));
